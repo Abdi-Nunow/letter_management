@@ -364,7 +364,7 @@ async function showDashboard() {
                   <i class="material-icons-round" style="color: ${l.recipient === currentDept ? '#22c55e' : '#3b82f6'};">${l.recipient === currentDept ? 'call_received' : 'call_made'}</i>
                 </div>
                 <div style="flex: 1;">
-                  <div style="font-weight: 600;">${l.id} ${l.status === 'new' && l.recipient === currentDept ? '<span style="background:#ef4444;color:white;padding:2px 6px;border-radius:4px;font-size:0.6rem;margin-left:5px;">NEW</span>' : ''}</div>
+                  <div style="font-weight: 600;">${l.id} ${l.isSummon ? '<span style="background:linear-gradient(135deg,#ef4444,#dc2626);color:white;padding:2px 8px;border-radius:4px;font-size:0.65rem;font-weight:800;margin-left:5px;box-shadow:0 2px 4px rgba(239,68,68,0.4);">🚨 SUMMON</span>' : (l.status === 'new' && l.recipient === currentDept ? '<span style="background:#ef4444;color:white;padding:2px 6px;border-radius:4px;font-size:0.6rem;margin-left:5px;">NEW</span>' : '')}</div>
                   <div style="font-size: 0.85rem; color: #64748b;">${l.recipient === currentDept ? `From ${l.sender}` : `To ${l.recipient}`}: ${l.subject}</div>
                   ${(l.fileBlob || l.fileUrl) ? `<button class="btn btn-primary" style="padding: 2px 8px; font-size: 0.7rem; margin-top: 5px;" onclick="downloadFile('${l.id}')"><i class="material-icons-round" style="font-size: 0.9rem; vertical-align: middle;">file_download</i> Open Original</button>` : ''}
                 </div>
@@ -415,7 +415,13 @@ async function renderLetterTable(type, title) {
     <div class="animate-fade-in">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
         <div><h1>${title}</h1><p style="color: var(--text-muted); font-size: 0.9rem;">Total Records: ${filtered.length}</p></div>
-        <button class="btn btn-primary" onclick="openNewLetterModal('${type}')"><i class="material-icons-round">add</i> Send New Letter</button>
+        <div style="display:flex; gap:0.75rem; align-items:center;">
+          <button class="btn btn-emergency" onclick="openSummonModal()" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; font-weight: 700; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.35); display: inline-flex; align-items: center; gap: 6px; padding: 0.55rem 1.1rem; border-radius: var(--radius-md); cursor: pointer;" title="Send Urgent Summon to a Department">
+            <i class="material-icons-round" style="font-size: 1.15rem;">campaign</i>
+            <span>Summon</span>
+          </button>
+          <button class="btn btn-primary" onclick="openNewLetterModal('${type}')"><i class="material-icons-round">add</i> Send New Letter</button>
+        </div>
       </div>
       <div class="card" style="overflow-x: auto; padding: 0;">
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
@@ -431,14 +437,20 @@ async function renderLetterTable(type, title) {
           </thead>
           <tbody>
             ${filtered.sort((a, b) => b.timestamp - a.timestamp).map(l => `
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 1rem; font-weight: 600;">${l.id}</td>
+              <tr style="border-bottom: 1px solid #f1f5f9; ${l.isSummon ? 'background: #fff5f5;' : ''}">
+                <td style="padding: 1rem; font-weight: 600;">
+                  ${l.id}
+                  ${l.isSummon ? '<span style="background:linear-gradient(135deg, #ef4444, #dc2626);color:white;padding:2px 7px;border-radius:4px;font-size:0.65rem;font-weight:800;margin-left:6px;display:inline-block;box-shadow:0 2px 4px rgba(239,68,68,0.35);">🚨 SUMMON</span>' : ''}
+                </td>
                 <td style="padding: 1rem;">${type === 'incoming' ? l.sender : l.recipient}</td>
-                <td style="padding: 1rem; font-weight: 500;">${l.subject}</td>
+                <td style="padding: 1rem; font-weight: 500;">
+                  ${l.subject}
+                  ${l.isSummon && l.location ? `<div style="font-size:0.75rem; color:#b91c1c; margin-top:2px;">📍 Report To: <strong>${l.location}</strong></div>` : ''}
+                </td>
                 <td style="padding: 1rem; color: #64748b;">${l.date}</td>
                 <td style="padding: 1rem;">
-                  <span style="padding: 0.3rem 0.6rem; border-radius: 99px; font-size: 0.7rem; font-weight: 700; background: ${l.status === 'processed' ? '#f0fdf4' : '#fffbeb'}; color: ${l.status === 'processed' ? '#166534' : '#92400e'};">
-                    ${l.status.toUpperCase()}
+                  <span style="padding: 0.3rem 0.6rem; border-radius: 99px; font-size: 0.7rem; font-weight: 700; background: ${l.isSummon && l.status === 'urgent' ? '#fee2e2' : (l.status === 'processed' || l.status === 'acknowledged' ? '#f0fdf4' : '#fffbeb')}; color: ${l.isSummon && l.status === 'urgent' ? '#b91c1c' : (l.status === 'processed' || l.status === 'acknowledged' ? '#166534' : '#92400e')};">
+                    ${l.isSummon && l.status === 'urgent' ? '🚨 EMERGENCY' : (l.status === 'acknowledged' ? '✅ ACKNOWLEDGED' : l.status.toUpperCase())}
                   </span>
                 </td>
                 <td style="padding: 1rem;">
@@ -636,6 +648,26 @@ async function viewLetter(id) {
             </div>
           </div>
 
+          ${l.isSummon ? `
+            <div style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border: 2px solid #ef4444; border-radius: 14px; padding: 1.5rem; text-align: center; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.15);">
+              <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #b91c1c; font-size: 1.15rem; font-weight: 800; margin-bottom: 0.5rem; text-transform: uppercase;">
+                <i class="material-icons-round" style="font-size: 1.8rem; color: #ef4444;">campaign</i>
+                Emergency Summon Notice
+              </div>
+              <div style="font-size: 1.35rem; font-weight: 800; color: #991b1b; margin: 0.5rem 0; line-height: 1.3;">
+                "${l.message || 'Please come as soon as possible'}"
+              </div>
+              ${l.location ? `<div style="font-size: 0.95rem; color: #7f1d1d; font-weight: 600; margin-top: 0.5rem;"><i class="material-icons-round" style="font-size: 1rem; vertical-align: middle;">location_on</i> Report Location: <strong>${l.location}</strong></div>` : ''}
+              ${(isIncoming || isAdmin) && l.status === 'urgent' ? `
+                <button class="btn" style="background: #16a34a; color: white; font-weight: 700; margin-top: 1rem; padding: 0.75rem 2rem; border: none; border-radius: 8px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.35); cursor: pointer;" onclick="acknowledgeSummon('${l.id}')">
+                  <i class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">check_circle</i> I Am On My Way (Acknowledge)
+                </button>
+              ` : (l.status === 'acknowledged' ? `
+                <div style="margin-top: 0.75rem; color: #166534; font-weight: 700; font-size: 0.85rem;"><i class="material-icons-round" style="vertical-align: middle; font-size: 1.1rem;">verified</i> Attendance has been acknowledged and confirmed.</div>
+              ` : '')}
+            </div>
+          ` : ''}
+
           <div style="margin-bottom: 2.5rem;">
             <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Letter Subject</label>
             <div style="font-size: 1.3rem; font-weight: 800; color: var(--navy); line-height: 1.3;">${l.subject}</div>
@@ -777,6 +809,185 @@ function triggerDownload(url, name) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// --- EMERGENCY SUMMON MODULE ---
+function playEmergencyTone() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.55);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.55);
+  } catch (e) {
+    console.warn("Audio alert unavailable:", e);
+  }
+}
+
+const alertedSummons = new Set();
+
+function showEmergencyAlertModal(summon) {
+  if (alertedSummons.has(summon.id)) return;
+  alertedSummons.add(summon.id);
+
+  playEmergencyTone();
+
+  const existing = document.getElementById('summonAlertOverlay');
+  if (existing) existing.remove();
+
+  const alertMarkup = `
+    <div id="summonAlertOverlay" style="position: fixed; inset: 0; background: rgba(185, 28, 28, 0.88); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 3000;">
+      <div class="card animate-fade-in" style="width: 100%; max-width: 540px; margin: 0 1.5rem; text-align: center; border: 3px solid #ef4444; box-shadow: 0 25px 60px rgba(0,0,0,0.6); padding: 2.5rem 2rem;">
+        <div style="width: 72px; height: 72px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; color: #ef4444;">
+          <i class="material-icons-round" style="font-size: 2.8rem;">campaign</i>
+        </div>
+        <span style="background: #ef4444; color: white; padding: 4px 14px; border-radius: 20px; font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase;">🚨 EMERGENCY SUMMON (U YEERID DEG-DEG AH)</span>
+        <h2 style="font-size: 1.55rem; margin: 1rem 0 0.5rem; color: #991b1b; font-weight: 800;">YOU ARE SUMMONED IMMEDIATELY!</h2>
+        <p style="color: #64748b; font-size: 0.95rem; margin-bottom: 1.5rem;">Summoned by: <strong style="color: var(--navy); font-size: 1.05rem;">${summon.sender}</strong></p>
+        
+        <div style="background: #fff1f2; border: 2px dashed #f87171; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.75rem;">
+          <div style="font-size: 1.35rem; font-weight: 800; color: #b91c1c; margin-bottom: 0.5rem; line-height: 1.3;">
+            "${summon.message || 'Please come as soon as possible'}"
+          </div>
+          ${summon.location ? `<div style="font-size: 0.9rem; color: #7f1d1d; font-weight: 600;"><i class="material-icons-round" style="font-size: 1rem; vertical-align: middle;">location_on</i> Report Location: <strong>${summon.location}</strong></div>` : ''}
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+          <button class="btn btn-primary" style="background: #16a34a; border: none; font-size: 1.05rem; padding: 0.85rem 2rem; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4); border-radius: 8px; cursor: pointer;" onclick="acknowledgeSummon('${summon.id}')">
+            <i class="material-icons-round">check_circle</i>
+            I Am On My Way (Acknowledge)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', alertMarkup);
+}
+
+async function acknowledgeSummon(id) {
+  const overlay = document.getElementById('summonAlertOverlay');
+  if (overlay) overlay.remove();
+  closeModal();
+  try {
+    await updateLetterStatus(id, 'acknowledged');
+  } catch(e) {
+    console.warn("Could not update status:", e);
+  }
+  alert("✅ Acknowledged! The sender can see that you confirmed receipt and are on your way.");
+  refreshCurrentView();
+}
+
+function openSummonModal() {
+  const otherDepts = departments.filter(d => d !== currentDept);
+  const modalMarkup = `
+    <div id="modalOverlay" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 2100;">
+      <div class="card animate-fade-in" style="width: 100%; max-width: 520px; margin: 0 1rem; border: 2px solid #ef4444; box-shadow: 0 20px 40px -10px rgba(239, 68, 68, 0.4);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #fee2e2;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="background: #fee2e2; color: #ef4444; width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+              <i class="material-icons-round" style="font-size: 1.7rem;">campaign</i>
+            </div>
+            <div>
+              <h2 style="margin: 0; font-size: 1.25rem; color: #991b1b; font-weight: 800;">Emergency Summon</h2>
+              <span style="font-size: 0.75rem; color: #ef4444; font-weight: 700; text-transform: uppercase;">U Yeerid Deg-deg ah</span>
+            </div>
+          </div>
+          <i class="material-icons-round" style="cursor: pointer; color: #64748b; font-size: 1.5rem;" onclick="closeModal()">close</i>
+        </div>
+
+        <form id="summonForm" onsubmit="handleSummonSubmit(event)">
+          <div style="margin-bottom: 1.25rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.4rem;">
+              Target Department <span style="color:#ef4444;">*</span>
+            </label>
+            <select id="summon_recipient" style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-size: 0.95rem; font-weight: 500;" required>
+              <option value="">-- Choose Department to Summon --</option>
+              <option value="ALL" style="font-weight: 700; color: #b91c1c;">📢 ALL DEPARTMENTS (Broadcast Summon)</option>
+              ${otherDepts.map(d => `<option value="${d}">${d}</option>`).join('')}
+            </select>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.4rem;">
+              Location / Report To (Optional)
+            </label>
+            <input type="text" id="summon_location" value="Main Office / Xafiiska Wasiirka" placeholder="e.g. Main Office / Meeting Room" style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-size: 0.95rem;">
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.4rem;">
+              Summon Message <span style="color:#ef4444;">*</span>
+            </label>
+            <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 0.75rem;">
+              <textarea id="summon_message" rows="3" required style="width: 100%; border: none; background: transparent; resize: none; font-size: 1rem; font-weight: 700; color: #991b1b; outline: none; font-family: inherit;">Please come as soon as possible</textarea>
+              <div style="font-size: 0.75rem; color: #dc2626; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <i class="material-icons-round" style="font-size: 0.9rem;">notification_important</i> An instant emergency sound and alert will trigger on the recipient's screen.
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+            <button type="button" class="btn" onclick="closeModal()" style="background: #f1f5f9; color: #475569; font-weight: 600;">Cancel</button>
+            <button type="submit" class="btn" id="summonSubmitBtn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; font-weight: 700; padding: 0.75rem 1.5rem; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); border-radius: 8px; cursor: pointer;">
+              <i class="material-icons-round" style="font-size: 1.2rem;">campaign</i>
+              Dispatch Emergency Summon
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalMarkup);
+}
+
+async function handleSummonSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('summonSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = `<i class="material-icons-round animate-spin">refresh</i> Dispatching Summon...`;
+
+  const recipient = document.getElementById('summon_recipient').value;
+  const message = document.getElementById('summon_message').value.trim() || "Please come as soon as possible";
+  const location = document.getElementById('summon_location').value.trim() || "Main Office";
+
+  const targets = (recipient === 'ALL') ? departments.filter(d => d !== currentDept) : [recipient];
+
+  try {
+    for (const tgt of targets) {
+      const summonRecord = {
+        id: `SUMMON-${String(Date.now()).slice(-5)}-${Math.floor(Math.random() * 90 + 10)}`,
+        sender: currentDept,
+        recipient: tgt,
+        subject: `🚨 EMERGENCY SUMMON: ${message}`,
+        message: message,
+        location: location,
+        isSummon: true,
+        priority: 'EMERGENCY',
+        date: new Date().toISOString().split('T')[0],
+        status: 'urgent',
+        fileName: null,
+        fileBlob: null,
+        timestamp: Date.now()
+      };
+      await saveLetter(summonRecord);
+    }
+    alert(`🚨 Emergency Summon dispatched successfully to ${recipient === 'ALL' ? 'ALL Departments' : recipient}!`);
+    closeModal();
+    showDashboard();
+  } catch (err) {
+    console.error("Summon send error:", err);
+    alert("❌ Error sending summon: " + err.message);
+    btn.disabled = false;
+    btn.innerHTML = `<i class="material-icons-round">campaign</i> Retry Summon`;
+  }
 }
 
 function openNewLetterModal(defaultType = 'outgoing') {
@@ -1021,6 +1232,11 @@ function setupRealtimeListener() {
                 refreshCurrentView(); // Refresh to show "Open File" button state
               }
             });
+          }
+
+          // Real-time Emergency Summon Alert Check
+          if (currentDept && cloudData.isSummon && (cloudData.recipient === currentDept || cloudData.recipient === 'ALL') && cloudData.status === 'urgent') {
+            showEmergencyAlertModal(cloudData);
           }
         };
         request.onerror = () => store.put(cloudData);
