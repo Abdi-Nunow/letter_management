@@ -180,11 +180,11 @@ async function syncToCloud(letterOriginal) {
 
 
 
-async function updateLetterStatus(id, newStatus) {
+async function updateLetterStatus(id, newStatus, extraFields = {}) {
   // Cloud Update
   try {
     if (typeof db_cloud !== 'undefined' && db_cloud) {
-      await db_cloud.collection('letters').doc(id).update({ status: newStatus });
+      await db_cloud.collection('letters').doc(id).update({ status: newStatus, ...extraFields });
     }
   } catch (e) {
     console.warn("Cloud Sync Error (updateStatus):", e);
@@ -195,10 +195,12 @@ async function updateLetterStatus(id, newStatus) {
   const letter = letters.find(l => l.id === id);
   if (letter) {
     letter.status = newStatus;
+    Object.assign(letter, extraFields);
     const transaction = db_local.transaction(['letters'], 'readwrite');
     transaction.objectStore('letters').put(letter);
   }
   refreshCurrentView(); // Force refresh to show new status
+  updateSidebarNotifications();
 }
 
 async function getPasswords() {
@@ -329,6 +331,39 @@ async function showDashboard() {
     ? '<span style="color:#22c55e; font-size:0.75rem; display:flex; align-items:center; gap:4px;"><i class="material-icons-round" style="font-size:1rem;">cloud_done</i> Cloud Active</span>'
     : '<span style="color:#f59e0b; font-size:0.75rem; display:flex; align-items:center; gap:4px;"><i class="material-icons-round" style="font-size:1rem;">cloud_off</i> Local Mode</span>';
 
+  const mySentSummons = letters.filter(l => l.sender === currentDept && l.isSummon);
+  const summonSection = mySentSummons.length > 0 ? `
+    <div class="card animate-fade-in" style="border-left: 5px solid #ef4444; margin-bottom: 2.5rem; padding: 1.5rem 2rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+        <div>
+          <h3 style="margin:0; display:flex; align-items:center; gap:8px; color:#991b1b; font-size:1.15rem; font-weight:800;">
+            <i class="material-icons-round" style="color:#ef4444; font-size:1.4rem;">campaign</i>
+            Live Emergency Summons Tracker
+          </h3>
+          <p style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Real-time attendance & acknowledgment status of departments you summoned</p>
+        </div>
+        <button class="btn btn-emergency" onclick="openSummonModal()" style="font-size:0.8rem; padding:0.4rem 0.9rem; background:linear-gradient(135deg,#ef4444,#dc2626); color:white; border:none; font-weight:700; border-radius:6px; cursor:pointer;">+ Summon Another</button>
+      </div>
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+        ${mySentSummons.sort((a,b)=>b.timestamp-a.timestamp).slice(0, 4).map(s => `
+          <div style="background: ${s.status === 'acknowledged' ? '#f0fdf4' : '#fff5f5'}; border: 1.5px solid ${s.status === 'acknowledged' ? '#bbf7d0' : '#fecaca'}; border-radius:10px; padding:1rem; box-shadow:0 2px 5px rgba(0,0,0,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+              <strong style="color:var(--navy); font-size:0.95rem;">To: ${s.recipient}</strong>
+              <span style="font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:4px; background:${s.status === 'acknowledged' ? '#16a34a' : '#f59e0b'}; color:white; display:inline-flex; align-items:center; gap:3px;">
+                ${s.status === 'acknowledged' ? '🟢 ON THE WAY' : '🟡 WAITING'}
+              </span>
+            </div>
+            <div style="font-size:0.85rem; color:#475569; font-weight:600;">"${s.message || 'Please come as soon as possible'}"</div>
+            <div style="font-size:0.75rem; color:#64748b; margin-top:0.4rem; display:flex; justify-content:space-between;">
+              <span>${s.location ? `📍 ${s.location}` : ''}</span>
+              <span>${s.date}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
+
   mainBody.innerHTML = `
     <div class="animate-fade-in">
       <div style="margin-bottom: 2.5rem; display:flex; justify-content:space-between; align-items:flex-start;">
@@ -353,6 +388,8 @@ async function showDashboard() {
           <div><div style="color: #64748b; font-size: 0.85rem; font-weight: 700; text-transform: uppercase;">Pending</div><div style="font-size: 1.75rem; font-weight: 800;">${pendingInbox.length}</div></div>
         </div>
       </div>
+
+      ${summonSection}
 
       <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
         <div class="card" style="padding: 0; overflow: hidden;">
@@ -387,9 +424,32 @@ async function showDashboard() {
 
 async function updateSidebarNotifications() {
   const letters = await getLetters();
-  const count = letters.filter(l => l.recipient === currentDept && l.status === 'new').length;
+  if (!currentDept) return;
+
+  // Incoming regular letters
+  const incomingLetters = letters.filter(l => l.recipient === currentDept && !l.isSummon && l.status === 'new').length;
+  // Incoming urgent summons
+  const incomingSummons = letters.filter(l => (l.recipient === currentDept || l.recipient === 'ALL') && l.isSummon && l.status === 'urgent').length;
+  
+  // SENDER alerts: Pending summons sent by me waiting for arrival
+  const pendingSentSummons = letters.filter(l => l.sender === currentDept && l.isSummon && l.status === 'urgent').length;
+
+  // Sidebar badge: counts unread incoming items
+  const totalIncoming = incomingLetters + incomingSummons;
   const badge = document.getElementById('incomingBadge');
-  if (badge) { badge.innerText = count; badge.style.display = count > 0 ? 'flex' : 'none'; }
+  if (badge) { 
+    badge.innerText = totalIncoming; 
+    badge.style.display = totalIncoming > 0 ? 'flex' : 'none'; 
+  }
+
+  // Header Bell Badge: counts incoming alerts + outgoing summon activity
+  const notifBadge = document.getElementById('notifBadge');
+  const totalNotifs = incomingSummons + incomingLetters + pendingSentSummons;
+  if (notifBadge) {
+    notifBadge.innerText = totalNotifs;
+    notifBadge.style.display = totalNotifs > 0 ? 'flex' : 'none';
+    notifBadge.style.background = incomingSummons > 0 ? '#ef4444' : '#3b82f6';
+  }
 }
 
 async function showIncoming() {
@@ -877,12 +937,163 @@ async function acknowledgeSummon(id) {
   if (overlay) overlay.remove();
   closeModal();
   try {
-    await updateLetterStatus(id, 'acknowledged');
+    await updateLetterStatus(id, 'acknowledged', {
+      acknowledgedAt: Date.now(),
+      acknowledgedBy: currentDept
+    });
   } catch(e) {
     console.warn("Could not update status:", e);
   }
-  alert("✅ Acknowledged! The sender can see that you confirmed receipt and are on your way.");
+  alert("✅ Acknowledged! The sender has been notified that you are on your way.");
   refreshCurrentView();
+}
+
+function playSuccessChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+    osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.12); // E5
+    osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.24); // G5
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.65);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.65);
+  } catch(e) {}
+}
+
+const alertedSenderSummons = new Set();
+
+function showSenderSummonAckNotification(summon) {
+  const key = `${summon.id}_ack`;
+  if (alertedSenderSummons.has(key)) return;
+  alertedSenderSummons.add(key);
+
+  playSuccessChime();
+
+  const toastId = `toast_${Date.now()}`;
+  const toastMarkup = `
+    <div id="${toastId}" class="animate-fade-in" style="position: fixed; top: 80px; right: 24px; background: #ffffff; border: 2.5px solid #22c55e; border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); padding: 1.25rem 1.5rem; z-index: 99999; display: flex; align-items: flex-start; gap: 1rem; width: 390px; transition: all 0.3s ease;">
+      <div style="width: 46px; height: 46px; border-radius: 50%; background: #dcfce7; color: #16a34a; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <i class="material-icons-round" style="font-size: 2rem;">directions_run</i>
+      </div>
+      <div style="flex: 1;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+          <span style="font-size: 0.7rem; font-weight: 800; background: #22c55e; color: white; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Summon Response</span>
+          <i class="material-icons-round" style="cursor: pointer; color: #94a3b8; font-size: 1.2rem;" onclick="document.getElementById('${toastId}').remove()">close</i>
+        </div>
+        <div style="font-size: 1.05rem; font-weight: 800; color: #14532d; margin-bottom: 0.25rem;">
+          ${summon.recipient} is on the way!
+        </div>
+        <div style="font-size: 0.85rem; color: #475569;">
+          Confirmed receipt of your emergency summon: <em>"${summon.message || 'Please come as soon as possible'}"</em>
+        </div>
+        <div style="font-size: 0.75rem; color: #16a34a; font-weight: 700; margin-top: 0.4rem; display: flex; align-items: center; gap: 4px;">
+          <i class="material-icons-round" style="font-size: 0.95rem;">verified</i> Acknowledged & Coming
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', toastMarkup);
+
+  updateSidebarNotifications();
+
+  setTimeout(() => {
+    const el = document.getElementById(toastId);
+    if (el) el.remove();
+  }, 12000);
+}
+
+async function toggleNotificationMenu() {
+  const menu = document.getElementById('notifDropdown');
+  if (!menu) return;
+
+  if (menu.style.display === 'block') {
+    menu.style.display = 'none';
+    return;
+  }
+
+  const letters = await getLetters();
+  
+  // Summons sent by this department
+  const mySentSummons = letters.filter(l => l.sender === currentDept && l.isSummon);
+  // Summons received by this department
+  const myIncomingSummons = letters.filter(l => (l.recipient === currentDept || l.recipient === 'ALL') && l.isSummon);
+  // Recent incoming regular letters
+  const myIncomingLetters = letters.filter(l => l.recipient === currentDept && !l.isSummon && l.status === 'new');
+
+  menu.innerHTML = `
+    <div style="padding: 1rem 1.25rem; background: var(--navy); color: white; display: flex; justify-content: space-between; align-items: center;">
+      <div style="font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+        <i class="material-icons-round" style="color: var(--accent); font-size: 1.2rem;">notifications</i> Notifications & Summon Status
+      </div>
+      <span style="font-size: 0.75rem; background: rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 12px;">Real-Time</span>
+    </div>
+
+    <div style="max-height: 420px; overflow-y: auto; padding: 0.5rem 0;">
+      <!-- Section: Outgoing Summons Sent By You -->
+      <div style="padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 800; color: #64748b; background: #f8fafc; text-transform: uppercase;">
+        📡 Summons Dispatched By You (${mySentSummons.length})
+      </div>
+      ${mySentSummons.length === 0 ? `
+        <div style="padding: 0.75rem 1rem; font-size: 0.85rem; color: #94a3b8; font-style: italic;">No emergency summons sent yet.</div>
+      ` : mySentSummons.sort((a,b) => b.timestamp - a.timestamp).slice(0, 5).map(s => `
+        <div style="padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: flex-start; gap: 10px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${s.status === 'acknowledged' ? '#dcfce7' : '#fee2e2'}; color: ${s.status === 'acknowledged' ? '#16a34a' : '#ef4444'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <i class="material-icons-round" style="font-size: 1.1rem;">${s.status === 'acknowledged' ? 'directions_run' : 'hourglass_top'}</i>
+          </div>
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="font-size: 0.85rem; color: #1e293b;">To: ${s.recipient}</strong>
+              <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${s.status === 'acknowledged' ? '#dcfce7' : '#fef3c7'}; color: ${s.status === 'acknowledged' ? '#166534' : '#92400e'};">
+                ${s.status === 'acknowledged' ? '🟢 ON THE WAY' : '🟡 WAITING'}
+              </span>
+            </div>
+            <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">"${s.message || 'Please come as soon as possible'}"</div>
+            <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">${s.date} ${s.location ? `• 📍 ${s.location}` : ''}</div>
+          </div>
+        </div>
+      `).join('')}
+
+      <!-- Section: Incoming Alerts -->
+      <div style="padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 800; color: #64748b; background: #f8fafc; text-transform: uppercase; margin-top: 0.5rem;">
+        📥 Incoming Summons & New Letters
+      </div>
+      ${myIncomingSummons.filter(s => s.status === 'urgent').length === 0 && myIncomingLetters.length === 0 ? `
+        <div style="padding: 0.75rem 1rem; font-size: 0.85rem; color: #94a3b8; font-style: italic;">No unread incoming notifications.</div>
+      ` : `
+        ${myIncomingSummons.filter(s => s.status === 'urgent').map(s => `
+          <div style="padding: 0.75rem 1rem; border-bottom: 1px solid #fee2e2; background: #fff5f5; display: flex; align-items: flex-start; gap: 10px;">
+            <i class="material-icons-round" style="color: #ef4444; font-size: 1.3rem;">campaign</i>
+            <div style="flex: 1;">
+              <strong style="color: #991b1b; font-size: 0.85rem;">URGENT SUMMON from ${s.sender}</strong>
+              <div style="font-size: 0.8rem; color: #7f1d1d;">"${s.message || 'Please come as soon as possible'}"</div>
+              <button class="btn" style="background: #16a34a; color: white; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; margin-top: 4px; border: none; border-radius: 4px; cursor: pointer;" onclick="acknowledgeSummon('${s.id}')">Acknowledge</button>
+            </div>
+          </div>
+        `).join('')}
+        ${myIncomingLetters.map(l => `
+          <div style="padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 10px;">
+            <i class="material-icons-round" style="color: #3b82f6; font-size: 1.2rem;">mark_email_unread</i>
+            <div style="flex: 1;">
+              <div style="font-size: 0.85rem; font-weight: 600;">From ${l.sender}: ${l.subject}</div>
+              <div style="font-size: 0.7rem; color: #94a3b8;">${l.date}</div>
+            </div>
+          </div>
+        `).join('')}
+      `}
+    </div>
+
+    <div style="padding: 0.75rem; text-align: center; background: #f8fafc; border-top: 1px solid #e2e8f0;">
+      <button class="btn" style="font-size: 0.8rem; padding: 4px 14px;" onclick="document.getElementById('notifDropdown').style.display='none'">Close</button>
+    </div>
+  `;
+
+  menu.style.display = 'block';
 }
 
 function openSummonModal() {
@@ -1234,9 +1445,14 @@ function setupRealtimeListener() {
             });
           }
 
-          // Real-time Emergency Summon Alert Check
+          // Real-time Emergency Summon Alert Check (For Recipient)
           if (currentDept && cloudData.isSummon && (cloudData.recipient === currentDept || cloudData.recipient === 'ALL') && cloudData.status === 'urgent') {
             showEmergencyAlertModal(cloudData);
+          }
+
+          // Real-time Summon Acknowledgment Alert (For SENDER who sent the summon)
+          if (currentDept && cloudData.isSummon && cloudData.sender === currentDept && cloudData.status === 'acknowledged') {
+            showSenderSummonAckNotification(cloudData);
           }
         };
         request.onerror = () => store.put(cloudData);
