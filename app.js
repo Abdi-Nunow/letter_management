@@ -137,6 +137,13 @@ const translations = {
     hrCategory: "HRM & Personnel Records",
     generalCategory: "General Administrative Records",
     noArchivedRecords: "No archived records found in vault.",
+    catalogNewHardcopy: "Catalog Physical Record",
+    page: "Page",
+    of: "of",
+    previous: "Previous",
+    next: "Next",
+    recordsPerPage: "per page",
+    showing: "Showing",
     langBtnLabel: "🌐 Soomaali"
   },
   so: {
@@ -227,6 +234,13 @@ const translations = {
     hrCategory: "Shaqaalaha & Maamulka HRM",
     generalCategory: "Waraaqaha Maamulka Guud",
     noArchivedRecords: "Wax waraaqo ah kuma jiraan kaydka.",
+    catalogNewHardcopy: "Diiwaangeli Warqad Kayd ah",
+    page: "Bogga",
+    of: "ee",
+    previous: "Kii Hore",
+    next: "Ka Xiga",
+    recordsPerPage: "boggiiba",
+    showing: "Muujinaya",
     langBtnLabel: "🌐 English"
   }
 };
@@ -604,16 +618,30 @@ async function showPublicVerificationModal(verifyId) {
 // ARCHIVE MANAGEMENT SYSTEM (AMS)
 // ==========================================
 
-async function showArchive(filterCategory = '', filterYear = '', searchQuery = '') {
+let archiveState = {
+  category: '',
+  year: '',
+  search: '',
+  page: 1,
+  pageSize: 25
+};
+
+async function showArchive(filterCategory = '', filterYear = '', searchQuery = '', page = 1, pageSize = 25) {
   currentView = 'archive';
   updateActiveNavLink(4);
+  archiveState.category = filterCategory;
+  archiveState.year = filterYear;
+  archiveState.search = searchQuery;
+  archiveState.page = page;
+  archiveState.pageSize = pageSize;
+
   const mainBody = document.getElementById('mainBody');
   const letters = await getLetters();
   
   // Filter for archived records
   let archivedList = letters.filter(l => l.isArchived || l.status === 'archived');
 
-  // Compute metrics
+  // Compute overall vault metrics
   const totalArchived = archivedList.length;
   const uniqueBoxes = new Set(archivedList.map(l => l.archiveData?.box).filter(Boolean)).size;
   const borrowedHardcopies = archivedList.filter(l => l.checkoutData?.isBorrowed).length;
@@ -635,9 +663,21 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
       (l.sender && l.sender.toLowerCase().includes(q)) ||
       (l.recipient && l.recipient.toLowerCase().includes(q)) ||
       (l.archiveData?.box && l.archiveData.box.toLowerCase().includes(q)) ||
-      (l.archiveData?.cabinet && l.archiveData.cabinet.toLowerCase().includes(q))
+      (l.archiveData?.cabinet && l.archiveData.cabinet.toLowerCase().includes(q)) ||
+      (l.archiveData?.folder && l.archiveData.folder.toLowerCase().includes(q))
     );
   }
+
+  // Sort by archival timestamp (newest first)
+  archivedList.sort((a, b) => ((b.archiveData?.archivedAt || b.timestamp) - (a.archiveData?.archivedAt || a.timestamp)));
+
+  // Pagination calculation
+  const totalFiltered = archivedList.length;
+  const totalPages = Math.ceil(totalFiltered / pageSize) || 1;
+  const curPage = Math.max(1, Math.min(page, totalPages));
+  const startIdx = (curPage - 1) * pageSize;
+  const endIdx = startIdx + pageSize;
+  const pageItems = archivedList.slice(startIdx, endIdx);
 
   const categories = [
     { id: 'tax', name: t('taxCategory'), icon: 'receipt_long' },
@@ -648,7 +688,7 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
     { id: 'general', name: t('generalCategory'), icon: 'folder' }
   ];
 
-  const years = ['2026', '2025', '2024', '2023'];
+  const years = ['2026', '2025', '2024', '2023', '2022', '2021', '2020'];
 
   mainBody.innerHTML = `
     <div class="animate-fade-in">
@@ -660,12 +700,15 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
             </div>
             <div>
               <h1 style="font-size: 2rem; font-weight: 800; color: var(--navy); margin: 0;">${t('archive')}</h1>
-              <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 2px;">${t('archiveSection')} &bull; Permanent Physical & Digital Storage Vault</p>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 2px;">${t('archiveSection')} &bull; Permanent Physical Vault Index (${totalArchived} Records)</p>
             </div>
           </div>
         </div>
 
-        <div style="display: flex; gap: 0.75rem; align-items: center;">
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="openDirectArchiveRecordModal()" style="background: #0284c7; font-weight: 700; padding: 0.65rem 1.25rem;">
+            <i class="material-icons-round">add_circle</i> ${t('catalogNewHardcopy')}
+          </button>
           <button class="btn btn-primary" onclick="exportReportsCSV()" style="background: #16a34a; font-weight: 700; padding: 0.65rem 1.25rem;">
             <i class="material-icons-round">file_download</i> ${t('exportCsv')}
           </button>
@@ -679,7 +722,7 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
             <i class="material-icons-round" style="font-size: 1.8rem;">archive</i>
           </div>
           <div>
-            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Total Archived</div>
+            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Total Cataloged</div>
             <div style="font-size: 1.8rem; font-weight: 800; color: var(--navy);">${totalArchived}</div>
           </div>
         </div>
@@ -720,7 +763,7 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
         <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
           <div style="flex: 1; min-width: 260px; position: relative;">
             <i class="material-icons-round" style="position: absolute; left: 12px; top: 10px; color: #94a3b8;">search</i>
-            <input type="text" id="archiveSearchInput" value="${searchQuery}" placeholder="Search subject, ref number, box tag, cabinet..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; border-radius: 8px; border: 1px solid #cbd5e1; outline: none; font-size: 0.9rem;" onkeypress="if(event.key==='Enter') executeArchiveSearch()">
+            <input type="text" id="archiveSearchInput" value="${searchQuery}" placeholder="Search subject, ref number, box tag, cabinet, folder..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; border-radius: 8px; border: 1px solid #cbd5e1; outline: none; font-size: 0.9rem;" onkeypress="if(event.key==='Enter') executeArchiveSearch()">
           </div>
 
           <div style="min-width: 200px;">
@@ -744,7 +787,7 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
       </div>
 
       <!-- Archived Records Table -->
-      <div class="card" style="overflow-x: auto; padding: 0;">
+      <div class="card" style="overflow-x: auto; padding: 0; border-radius: 12px 12px 0 0;">
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
           <thead style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
             <tr>
@@ -758,7 +801,7 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
             </tr>
           </thead>
           <tbody>
-            ${archivedList.sort((a, b) => ((b.archiveData?.archivedAt || b.timestamp) - (a.archiveData?.archivedAt || a.timestamp))).map(l => {
+            ${pageItems.map(l => {
               const catObj = categories.find(c => c.id === (l.archiveData?.category || 'general')) || { name: 'General', icon: 'folder' };
               const isBorrowed = l.checkoutData?.isBorrowed;
               return `
@@ -826,19 +869,227 @@ async function showArchive(filterCategory = '', filterYear = '', searchQuery = '
                   </td>
                 </tr>
               `;
-            }).join('') || `<tr><td colspan="7" style="padding: 4rem; text-align: center; color: #94a3b8;"><i class="material-icons-round" style="font-size: 3.5rem; margin-bottom: 1rem; color: #cbd5e1;">inventory_2</i><p style="font-size: 1.1rem; font-weight: 600;">${t('noArchivedRecords')}</p><p style="font-size: 0.85rem; margin-top: 4px;">Click 'Send to Archive' on any letter to assign physical box/cabinet and secure it here.</p></td></tr>`}
+            }).join('') || `<tr><td colspan="7" style="padding: 4rem; text-align: center; color: #94a3b8;"><i class="material-icons-round" style="font-size: 3.5rem; margin-bottom: 1rem; color: #cbd5e1;">inventory_2</i><p style="font-size: 1.1rem; font-weight: 600;">${t('noArchivedRecords')}</p><p style="font-size: 0.85rem; margin-top: 4px;">Click 'Catalog Physical Record' or 'Send to Archive' on any letter to assign warehouse coordinates.</p></td></tr>`}
           </tbody>
         </table>
       </div>
+
+      <!-- Pagination Toolbar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+        <div style="font-size: 0.85rem; color: #64748b; font-weight: 600;">
+          ${t('showing')} <strong>${totalFiltered > 0 ? startIdx + 1 : 0}</strong> - <strong>${Math.min(endIdx, totalFiltered)}</strong> ${t('of')} <strong>${totalFiltered}</strong> records
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <label style="font-size: 0.8rem; color: #64748b; font-weight: 600;">Show:
+            <select onchange="changeArchivePageSize(this.value)" style="padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.8rem; margin-left: 4px;">
+              <option value="25" ${pageSize === 25 ? 'selected' : ''}>25</option>
+              <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+              <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+            </select>
+          </label>
+          <button class="btn" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" ${curPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} onclick="changeArchivePage(${curPage - 1})">
+            <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">chevron_left</i> ${t('previous')}
+          </button>
+          <span style="font-size: 0.85rem; font-weight: 700; color: var(--navy);">${t('page')} ${curPage} ${t('of')} ${totalPages}</span>
+          <button class="btn" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" ${curPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} onclick="changeArchivePage(${curPage + 1})">
+            ${t('next')} <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">chevron_right</i>
+          </button>
+        </div>
+      </div>
     </div>
   `;
+}
+
+function changeArchivePage(newPage) {
+  showArchive(archiveState.category, archiveState.year, archiveState.search, newPage, archiveState.pageSize);
+}
+
+function changeArchivePageSize(newSize) {
+  showArchive(archiveState.category, archiveState.year, archiveState.search, 1, parseInt(newSize, 10));
 }
 
 function executeArchiveSearch() {
   const cat = document.getElementById('archiveCategoryFilter')?.value || '';
   const yr = document.getElementById('archiveYearFilter')?.value || '';
   const sq = document.getElementById('archiveSearchInput')?.value || '';
-  showArchive(cat, yr, sq);
+  showArchive(cat, yr, sq, 1, archiveState.pageSize);
+}
+
+// Rapid Cataloging Modal: Add existing physical paper folders directly to Archive Vault ($0 file cost)
+function openDirectArchiveRecordModal() {
+  const existingModal = document.getElementById('directArchiveModalOverlay');
+  if (existingModal) existingModal.remove();
+
+  const currentYear = new Date().getFullYear();
+  const autoRef = `SRB/ARC/${currentYear}/${String(Date.now()).slice(-5)}`;
+
+  const modalHtml = `
+    <div id="directArchiveModalOverlay" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 1rem;">
+      <div class="card animate-fade-in" style="width: 100%; max-width: 620px; max-height: 94vh; overflow-y: auto; margin: 0; padding: 2rem; border-top: 5px solid #0284c7; box-shadow: 0 25px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.35rem; color: var(--navy); display: flex; align-items: center; gap: 8px;">
+              <i class="material-icons-round" style="color: #0284c7;">inventory_2</i>
+              ${t('catalogNewHardcopy')}
+            </h3>
+            <p style="font-size: 0.8rem; color: #64748b; margin: 3px 0 0;">Physical Hardcopy Indexing (No scan upload needed &bull; Zero monthly cloud storage)</p>
+          </div>
+          <i class="material-icons-round" style="cursor: pointer; font-size: 1.5rem;" onclick="document.getElementById('directArchiveModalOverlay').remove()">close</i>
+        </div>
+
+        <form id="directArchiveForm" onsubmit="handleDirectArchiveSubmit(event)">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.25rem;">${t('refId')}</label>
+              <input type="text" id="darc_ref" value="${autoRef}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600;" required>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.25rem;">${t('date')}</label>
+              <input type="date" id="darc_date" value="${new Date().toISOString().split('T')[0]}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" required>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('subject')} / Title</label>
+            <input type="text" id="darc_subject" placeholder="e.g. Tax Assessment Dossier - Commercial Trader #4412" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1;" required>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.25rem;">${t('sender')} (Origin Dept)</label>
+              <select id="darc_sender" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" required>
+                ${departments.map(d => `<option value="${d}" ${d === currentDept ? 'selected' : ''}>${d}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.25rem;">${t('recipient')} (Target / Party)</label>
+              <input type="text" id="darc_recipient" placeholder="e.g. Archive Vault or Taxpayer" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" required value="Archive Vault (Qaybta Kaydka)">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('category')}</label>
+            <select id="darc_category" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1;" required>
+              <option value="tax">Tax & Revenue Assessment (Canshuuraha)</option>
+              <option value="decrees">Ministerial Decrees & Circulars (Awaamiirta Wasiirka)</option>
+              <option value="legal">Legal & Litigation Directives (Sharciyada)</option>
+              <option value="finance">Finance & Public Accounts (Maaliyadda)</option>
+              <option value="hr">HRM & Personnel Records (Shaqaalaha)</option>
+              <option value="general">General Administrative Records (Maamulka Guud)</option>
+            </select>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 0.75rem; font-weight: 800; color: #0284c7; text-transform: uppercase; margin-bottom: 0.75rem;">
+              <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">room</i>
+              ${t('physicalLocation')} Coordinates
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('cabinet')}</label>
+                <input type="text" id="darc_cabinet" value="Cabinet-A" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Cabinet-A" required>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('shelf')}</label>
+                <input type="text" id="darc_shelf" value="Shelf-1" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Shelf-1" required>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('boxTag')}</label>
+                <input type="text" id="darc_box" value="BOX-${currentYear}-01" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. BOX-2026-01" required>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">Folder / File No.</label>
+                <input type="text" id="darc_folder" value="Folder-01" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Folder-01" required>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('archivistNotes')}</label>
+            <textarea id="darc_notes" rows="2" style="width: 100%; padding: 0.6rem; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.85rem;" placeholder="Retention rules, original physical condition, box markings..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+            <button type="button" class="btn" onclick="document.getElementById('directArchiveModalOverlay').remove()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="darcSubmitBtn" style="background: #0284c7; color: white;">
+              <i class="material-icons-round">save</i> Catalog & Save to Vault
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function handleDirectArchiveSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('darcSubmitBtn');
+  if (btn) { btn.disabled = true; btn.innerText = "Cataloging..."; }
+
+  const id = `LMS-ARC-${String(Date.now()).slice(-7)}`;
+  const ref = document.getElementById('darc_ref').value;
+  const dateVal = document.getElementById('darc_date').value;
+  const senderVal = document.getElementById('darc_sender').value;
+  const recipientVal = document.getElementById('darc_recipient').value;
+  const subjectVal = document.getElementById('darc_subject').value;
+  const catVal = document.getElementById('darc_category').value;
+  const cabVal = document.getElementById('darc_cabinet').value;
+  const shelfVal = document.getElementById('darc_shelf').value;
+  const boxVal = document.getElementById('darc_box').value;
+  const folderVal = document.getElementById('darc_folder').value;
+  const notesVal = document.getElementById('darc_notes').value;
+
+  const letterRecord = {
+    id: id,
+    refNumber: ref,
+    sender: senderVal,
+    recipient: recipientVal,
+    subject: subjectVal,
+    priority: 'routine',
+    date: dateVal,
+    status: 'processed',
+    timestamp: Date.now(),
+    isArchived: true,
+    archiveData: {
+      category: catVal,
+      cabinet: cabVal,
+      shelf: shelfVal,
+      box: boxVal,
+      folder: folderVal,
+      notes: notesVal,
+      archivedAt: Date.now(),
+      archivedDate: dateVal,
+      archivedBy: currentDept || 'Archivist'
+    },
+    checkoutData: {
+      isBorrowed: false
+    },
+    minuteSheet: [
+      {
+        from: senderVal,
+        to: 'Archive Vault (Qaybta Kaydka)',
+        remarks: `[Physical Hardcopy Cataloged] Stored in Cabinet: ${cabVal}, Shelf: ${shelfVal}, Box: ${boxVal}, Folder: ${folderVal}. Category: ${catVal.toUpperCase()}`,
+        date: dateVal,
+        timestamp: Date.now()
+      }
+    ]
+  };
+
+  try {
+    await saveLetter(letterRecord);
+    alert("✅ Physical record successfully cataloged into the Archive Vault!");
+    const overlay = document.getElementById('directArchiveModalOverlay');
+    if (overlay) overlay.remove();
+    showArchive();
+  } catch(err) {
+    alert("Error cataloging record: " + err.message);
+    if (btn) { btn.disabled = false; btn.innerText = "Retry"; }
+  }
 }
 
 // Modal: Assign physical location & archive letter
@@ -1667,19 +1918,38 @@ function showOutgoing() {
   renderLetterTable('outgoing', t('outgoing'));
 }
 
-async function renderLetterTable(type, title) {
+let letterTableState = {
+  type: 'incoming',
+  page: 1,
+  pageSize: 25
+};
+
+async function renderLetterTable(type, title, page = 1, pageSize = 25) {
+  letterTableState.type = type;
+  letterTableState.page = page;
+  letterTableState.pageSize = pageSize;
+
   const mainBody = document.getElementById('mainBody');
   const letters = await getLetters();
   const filtered = type === 'incoming' ? letters.filter(l => l.recipient === currentDept) : letters.filter(l => l.sender === currentDept);
+  const sorted = filtered.sort((a, b) => b.timestamp - a.timestamp);
+
+  // Pagination calculation
+  const totalFiltered = sorted.length;
+  const totalPages = Math.ceil(totalFiltered / pageSize) || 1;
+  const curPage = Math.max(1, Math.min(page, totalPages));
+  const startIdx = (curPage - 1) * pageSize;
+  const endIdx = startIdx + pageSize;
+  const pageItems = sorted.slice(startIdx, endIdx);
 
   mainBody.innerHTML = `
     <div class="animate-fade-in">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
         <div>
           <h1 style="font-size: 2rem; font-weight: 800; color: var(--navy); margin-bottom: 0.25rem;">${title}</h1>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">Total Records: ${filtered.length}</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Total Records: ${totalFiltered}</p>
         </div>
-        <div style="display:flex; gap:0.75rem; align-items:center;">
+        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap: wrap;">
           <button class="btn btn-emergency" onclick="openSummonModal()" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; font-weight: 700; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.35); display: inline-flex; align-items: center; gap: 6px; padding: 0.55rem 1.1rem; border-radius: var(--radius-md); cursor: pointer;" title="Send Urgent Summon to a Department">
             <i class="material-icons-round" style="font-size: 1.15rem;">campaign</i>
             <span>${t('summon')}</span>
@@ -1689,7 +1959,7 @@ async function renderLetterTable(type, title) {
           </button>
         </div>
       </div>
-      <div class="card" style="overflow-x: auto; padding: 0;">
+      <div class="card" style="overflow-x: auto; padding: 0; border-radius: 12px 12px 0 0;">
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
           <thead style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
             <tr>
@@ -1703,7 +1973,7 @@ async function renderLetterTable(type, title) {
             </tr>
           </thead>
           <tbody>
-            ${filtered.sort((a, b) => b.timestamp - a.timestamp).map(l => `
+            ${pageItems.map(l => `
               <tr style="border-bottom: 1px solid #f1f5f9; ${l.isSummon ? 'background: #fff5f5;' : ''}">
                 <td style="padding: 1rem;">
                   <div style="font-weight: 700; color: var(--navy); font-size: 0.95rem;">${l.refNumber || l.id}</div>
@@ -1751,8 +2021,39 @@ async function renderLetterTable(type, title) {
           </tbody>
         </table>
       </div>
+
+      <!-- Pagination Toolbar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+        <div style="font-size: 0.85rem; color: #64748b; font-weight: 600;">
+          ${t('showing')} <strong>${totalFiltered > 0 ? startIdx + 1 : 0}</strong> - <strong>${Math.min(endIdx, totalFiltered)}</strong> ${t('of')} <strong>${totalFiltered}</strong> records
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <label style="font-size: 0.8rem; color: #64748b; font-weight: 600;">Show:
+            <select onchange="changeLetterPageSize(this.value)" style="padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.8rem; margin-left: 4px;">
+              <option value="25" ${pageSize === 25 ? 'selected' : ''}>25</option>
+              <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+              <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+            </select>
+          </label>
+          <button class="btn" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" ${curPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} onclick="changeLetterPage(${curPage - 1})">
+            <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">chevron_left</i> ${t('previous')}
+          </button>
+          <span style="font-size: 0.85rem; font-weight: 700; color: var(--navy);">${t('page')} ${curPage} ${t('of')} ${totalPages}</span>
+          <button class="btn" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" ${curPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} onclick="changeLetterPage(${curPage + 1})">
+            ${t('next')} <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">chevron_right</i>
+          </button>
+        </div>
+      </div>
     </div>
   `;
+}
+
+function changeLetterPage(newPage) {
+  renderLetterTable(letterTableState.type, letterTableState.type === 'incoming' ? t('incoming') : t('outgoing'), newPage, letterTableState.pageSize);
+}
+
+function changeLetterPageSize(newSize) {
+  renderLetterTable(letterTableState.type, letterTableState.type === 'incoming' ? t('incoming') : t('outgoing'), 1, parseInt(newSize, 10));
 }
 
 async function renderTableContentAsync(filtered) {
@@ -2621,6 +2922,7 @@ function openNewLetterModal(defaultType = 'outgoing') {
               ${t('fileAttach')}
             </button>
             <div id="fileNameDisplay" style="margin-top: 0.5rem; font-size: 0.85rem; color: #0284c7; font-weight: 600;"></div>
+            <div style="font-size: 0.75rem; color: #64748b; margin-top: 5px;">(Optional: Physical hardcopies do not require digital file scans)</div>
           </div>
 
           <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
