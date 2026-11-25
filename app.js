@@ -107,6 +107,36 @@ const translations = {
     verifyTitle: "OFFICIAL VERIFICATION OF AUTHENTICITY",
     verifyGenuine: "VERIFIED GENUINE OFFICIAL RECORD",
     verifyNotice: "This document is an authenticated entry in the Somali Revenue Bureau DDS Digital Letter Registry.",
+    archive: "Archive Vault",
+    archiveSection: "Official Registry Archive Vault",
+    sendToArchive: "Send to Archive",
+    archiveSuccess: "Record successfully archived into vault!",
+    archivedBy: "Archived By",
+    archivedDate: "Archived Date",
+    physicalLocation: "Physical Storage Location",
+    cabinet: "Cabinet / Safe",
+    shelf: "Shelf / Level",
+    boxTag: "Box / Folder Tag",
+    category: "Archive Category",
+    archivistNotes: "Archival Directives & Notes",
+    hardcopyStatus: "Hardcopy Physical Status",
+    inVault: "In Vault / Kaydka Yaalla",
+    borrowed: "Borrowed / La Amaahday",
+    borrowHardcopy: "Check-out Hardcopy File",
+    returnHardcopy: "Return to Vault",
+    borrowedBy: "Borrowed By Department",
+    expectedReturnDate: "Expected Return Date",
+    printArchiveTag: "Print Box Tag",
+    allCategories: "All Categories",
+    allYears: "All Years",
+    filterArchive: "Filter Archive Vault",
+    taxCategory: "Tax & Revenue Assessment",
+    decreesCategory: "Ministerial Decrees & Circulars",
+    legalCategory: "Legal & Litigation Directives",
+    financeCategory: "Finance & Public Accounts",
+    hrCategory: "HRM & Personnel Records",
+    generalCategory: "General Administrative Records",
+    noArchivedRecords: "No archived records found in vault.",
     langBtnLabel: "🌐 Soomaali"
   },
   so: {
@@ -167,6 +197,36 @@ const translations = {
     verifyTitle: "XAFIISKA DAKHLIGA DDS - XAQIIJINTA WARAARQDA",
     verifyGenuine: "WARAAQ RASMI AH OO LA XAQIIJIYAY",
     verifyNotice: "Waraaqdani waxay si sharci ah ugu diiwaangashan tahay Diiwaanka Dijitaalka ah ee Xafiiska Dakhliga Dawladda Deegaanka Soomaalida.",
+    archive: "Qaybta Kaydka",
+    archiveSection: "Diiwaanka Rasmiga ah ee Kaydka",
+    sendToArchive: "U Dir Kaydka",
+    archiveSuccess: "Waraaqda si guul leh ayaa loo kaydiyay!",
+    archivedBy: "Waxaa Kaydiyay",
+    archivedDate: "Taariikhda Kaydinta",
+    physicalLocation: "Goobta Warqaddu Ku Jirto (Galka)",
+    cabinet: "Qasnadda / Qolka",
+    shelf: "Khaanadda",
+    boxTag: "Sanduuqa / Faylka",
+    category: "Qeybta Kaydka",
+    archivistNotes: "Faahfaahinta Kaydinta",
+    hardcopyStatus: "Xaaladda Warqadda Asalka ah",
+    inVault: "Kaydka ayay taallaa",
+    borrowed: "Waa la amaahday",
+    borrowHardcopy: "Amaaho Warqadda Asalka ah",
+    returnHardcopy: "Ku Celi Kaydka",
+    borrowedBy: "Waaxda Amaahatay",
+    expectedReturnDate: "Xilliga Soo Celinta",
+    printArchiveTag: "Daabac Sumadda Sanduuqa",
+    allCategories: "Dhammaan Qeybaha",
+    allYears: "Dhammaan Sanadaha",
+    filterArchive: "Kala Saar Kaydka",
+    taxCategory: "Qiimaynta & Canshuuraha",
+    decreesCategory: "Wareegtooyinka & Awaamiirta Wasiirka",
+    legalCategory: "Sharciyada & Dacwadaha",
+    financeCategory: "Maaliyadda & Xisaabaadka",
+    hrCategory: "Shaqaalaha & Maamulka HRM",
+    generalCategory: "Waraaqaha Maamulka Guud",
+    noArchivedRecords: "Wax waraaqo ah kuma jiraan kaydka.",
     langBtnLabel: "🌐 English"
   }
 };
@@ -209,6 +269,9 @@ function updateStaticLanguageUI() {
 
   const navRep = document.getElementById('navRepText');
   if (navRep) navRep.innerText = t('reports');
+
+  const navArch = document.getElementById('navArchText');
+  if (navArch) navArch.innerText = t('archive');
 
   const lblDept = document.getElementById('lblDeptTitle');
   if (lblDept) lblDept.innerText = t('department') + ':';
@@ -537,6 +600,596 @@ async function showPublicVerificationModal(verifyId) {
   document.body.insertAdjacentHTML('beforeend', overlayHtml);
 }
 
+// ==========================================
+// ARCHIVE MANAGEMENT SYSTEM (AMS)
+// ==========================================
+
+async function showArchive(filterCategory = '', filterYear = '', searchQuery = '') {
+  currentView = 'archive';
+  updateActiveNavLink(4);
+  const mainBody = document.getElementById('mainBody');
+  const letters = await getLetters();
+  
+  // Filter for archived records
+  let archivedList = letters.filter(l => l.isArchived || l.status === 'archived');
+
+  // Compute metrics
+  const totalArchived = archivedList.length;
+  const uniqueBoxes = new Set(archivedList.map(l => l.archiveData?.box).filter(Boolean)).size;
+  const borrowedHardcopies = archivedList.filter(l => l.checkoutData?.isBorrowed).length;
+  const taxMinisterialCount = archivedList.filter(l => l.archiveData?.category === 'tax' || l.archiveData?.category === 'decrees').length;
+
+  // Filter applications
+  if (filterCategory) {
+    archivedList = archivedList.filter(l => l.archiveData?.category === filterCategory);
+  }
+  if (filterYear) {
+    archivedList = archivedList.filter(l => (l.date && l.date.startsWith(filterYear)) || (l.archiveData?.archivedDate && l.archiveData.archivedDate.startsWith(filterYear)));
+  }
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    archivedList = archivedList.filter(l => 
+      (l.subject && l.subject.toLowerCase().includes(q)) ||
+      (l.id && l.id.toLowerCase().includes(q)) ||
+      (l.refNumber && l.refNumber.toLowerCase().includes(q)) ||
+      (l.sender && l.sender.toLowerCase().includes(q)) ||
+      (l.recipient && l.recipient.toLowerCase().includes(q)) ||
+      (l.archiveData?.box && l.archiveData.box.toLowerCase().includes(q)) ||
+      (l.archiveData?.cabinet && l.archiveData.cabinet.toLowerCase().includes(q))
+    );
+  }
+
+  const categories = [
+    { id: 'tax', name: t('taxCategory'), icon: 'receipt_long' },
+    { id: 'decrees', name: t('decreesCategory'), icon: 'gavel' },
+    { id: 'legal', name: t('legalCategory'), icon: 'balance' },
+    { id: 'finance', name: t('financeCategory'), icon: 'account_balance' },
+    { id: 'hr', name: t('hrCategory'), icon: 'badge' },
+    { id: 'general', name: t('generalCategory'), icon: 'folder' }
+  ];
+
+  const years = ['2026', '2025', '2024', '2023'];
+
+  mainBody.innerHTML = `
+    <div class="animate-fade-in">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="background: linear-gradient(135deg, #0284c7, #0369a1); color: white; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);">
+              <i class="material-icons-round" style="font-size: 1.7rem;">inventory_2</i>
+            </div>
+            <div>
+              <h1 style="font-size: 2rem; font-weight: 800; color: var(--navy); margin: 0;">${t('archive')}</h1>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 2px;">${t('archiveSection')} &bull; Permanent Physical & Digital Storage Vault</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <button class="btn btn-primary" onclick="exportReportsCSV()" style="background: #16a34a; font-weight: 700; padding: 0.65rem 1.25rem;">
+            <i class="material-icons-round">file_download</i> ${t('exportCsv')}
+          </button>
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+        <div class="card" style="border-left: 5px solid #0284c7; display: flex; align-items: center; gap: 1.25rem;">
+          <div style="background: #f0f9ff; color: #0284c7; width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+            <i class="material-icons-round" style="font-size: 1.8rem;">archive</i>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Total Archived</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: var(--navy);">${totalArchived}</div>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 5px solid #8b5cf6; display: flex; align-items: center; gap: 1.25rem;">
+          <div style="background: #f5f3ff; color: #8b5cf6; width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+            <i class="material-icons-round" style="font-size: 1.8rem;">all_inbox</i>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Physical Boxes</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: var(--navy);">${uniqueBoxes}</div>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 5px solid ${borrowedHardcopies > 0 ? '#ef4444' : '#22c55e'}; display: flex; align-items: center; gap: 1.25rem;">
+          <div style="background: ${borrowedHardcopies > 0 ? '#fef2f2' : '#f0fdf4'}; color: ${borrowedHardcopies > 0 ? '#ef4444' : '#22c55e'}; width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+            <i class="material-icons-round" style="font-size: 1.8rem;">assignment_return</i>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Borrowed Files</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: ${borrowedHardcopies > 0 ? '#b91c1c' : '#166534'};">${borrowedHardcopies}</div>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 5px solid #ca8a04; display: flex; align-items: center; gap: 1.25rem;">
+          <div style="background: #fefce8; color: #ca8a04; width: 54px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+            <i class="material-icons-round" style="font-size: 1.8rem;">verified</i>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Tax & Directives</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: var(--navy);">${taxMinisterialCount}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="card" style="padding: 1.25rem; margin-bottom: 2rem;">
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 260px; position: relative;">
+            <i class="material-icons-round" style="position: absolute; left: 12px; top: 10px; color: #94a3b8;">search</i>
+            <input type="text" id="archiveSearchInput" value="${searchQuery}" placeholder="Search subject, ref number, box tag, cabinet..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; border-radius: 8px; border: 1px solid #cbd5e1; outline: none; font-size: 0.9rem;" onkeypress="if(event.key==='Enter') executeArchiveSearch()">
+          </div>
+
+          <div style="min-width: 200px;">
+            <select id="archiveCategoryFilter" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.9rem;" onchange="executeArchiveSearch()">
+              <option value="">${t('allCategories')}</option>
+              ${categories.map(c => `<option value="${c.id}" ${filterCategory === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>
+          </div>
+
+          <div style="min-width: 140px;">
+            <select id="archiveYearFilter" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.9rem;" onchange="executeArchiveSearch()">
+              <option value="">${t('allYears')}</option>
+              ${years.map(y => `<option value="${y}" ${filterYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+            </select>
+          </div>
+
+          <button class="btn" onclick="executeArchiveSearch()" style="background: var(--navy); color: white; padding: 0.65rem 1.25rem;">
+            <i class="material-icons-round">filter_alt</i> Filter
+          </button>
+        </div>
+      </div>
+
+      <!-- Archived Records Table -->
+      <div class="card" style="overflow-x: auto; padding: 0;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+            <tr>
+              <th style="padding: 1rem;">${t('refId')}</th>
+              <th style="padding: 1rem;">${t('subject')} & ${t('category')}</th>
+              <th style="padding: 1rem;">Origin & Target</th>
+              <th style="padding: 1rem;">${t('physicalLocation')}</th>
+              <th style="padding: 1rem;">${t('hardcopyStatus')}</th>
+              <th style="padding: 1rem;">${t('archivedDate')}</th>
+              <th style="padding: 1rem;">${t('actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${archivedList.sort((a, b) => ((b.archiveData?.archivedAt || b.timestamp) - (a.archiveData?.archivedAt || a.timestamp))).map(l => {
+              const catObj = categories.find(c => c.id === (l.archiveData?.category || 'general')) || { name: 'General', icon: 'folder' };
+              const isBorrowed = l.checkoutData?.isBorrowed;
+              return `
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                  <td style="padding: 1rem;">
+                    <div style="font-weight: 700; color: var(--navy); font-size: 0.95rem;">${l.refNumber || l.id}</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace;">${l.id}</div>
+                  </td>
+                  <td style="padding: 1rem;">
+                    <div style="font-weight: 600; color: #1e293b;">${l.subject}</div>
+                    <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: #0284c7; background: #f0f9ff; padding: 2px 7px; border-radius: 4px; margin-top: 3px; border: 1px solid #bae6fd;">
+                      <i class="material-icons-round" style="font-size: 0.85rem;">${catObj.icon}</i>
+                      <span>${catObj.name}</span>
+                    </div>
+                  </td>
+                  <td style="padding: 1rem; font-size: 0.85rem;">
+                    <div><strong>From:</strong> ${l.sender}</div>
+                    <div><strong>To:</strong> ${l.recipient}</div>
+                  </td>
+                  <td style="padding: 1rem;">
+                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; display: inline-block;">
+                      <div style="font-weight: 800; font-size: 0.82rem; color: var(--navy); display: flex; align-items: center; gap: 5px;">
+                        <i class="material-icons-round" style="font-size: 1rem; color: var(--accent);">inventory_2</i>
+                        <span>${l.archiveData?.box || 'BOX-GENERAL'}</span>
+                      </div>
+                      <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">
+                        Cab: <strong>${l.archiveData?.cabinet || 'A'}</strong> &bull; Shelf: <strong>${l.archiveData?.shelf || '1'}</strong> &bull; Fld: <strong>${l.archiveData?.folder || '01'}</strong>
+                      </div>
+                    </div>
+                  </td>
+                  <td style="padding: 1rem;">
+                    ${isBorrowed ? `
+                      <span style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 4px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="material-icons-round" style="font-size: 0.85rem;">assignment_ind</i>
+                        Borrowed: ${l.checkoutData.borrowedBy}<br>Due: ${l.checkoutData.expectedReturn || 'ASAP'}
+                      </span>
+                    ` : `
+                      <span style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 4px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="material-icons-round" style="font-size: 0.85rem;">verified_user</i>
+                        ${t('inVault')}
+                      </span>
+                    `}
+                  </td>
+                  <td style="padding: 1rem; font-size: 0.8rem; color: #64748b;">
+                    <div>${l.archiveData?.archivedDate || l.date}</div>
+                    <div style="font-size: 0.7rem; color: #94a3b8;">By: ${l.archiveData?.archivedBy || 'Archivist'}</div>
+                  </td>
+                  <td style="padding: 1rem;">
+                    <div style="display: flex; gap: 0.4rem; align-items: center;">
+                      ${(l.fileBlob || l.fileUrl || (l.fileChunks && l.fileChunks > 0)) ? `
+                        <button class="icon-btn" onclick="previewDocument('${l.id}')" title="${t('openDoc')} (In-Browser)" style="color: #0284c7; background: #f0f9ff; border: 1px solid #bae6fd; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                          <i class="material-icons-round" style="font-size: 1.1rem;">visibility</i>
+                        </button>
+                      ` : ''}
+                      <button class="icon-btn" onclick="printArchiveTag('${l.id}')" title="${t('printArchiveTag')}" style="color: #ca8a04; background: #fefce8; border: 1px solid #fef08a; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <i class="material-icons-round" style="font-size: 1.1rem;">qr_code_2</i>
+                      </button>
+                      <button class="icon-btn" onclick="openBorrowModal('${l.id}')" title="${isBorrowed ? t('returnHardcopy') : t('borrowHardcopy')}" style="color: ${isBorrowed ? '#16a34a' : '#8b5cf6'}; background: ${isBorrowed ? '#f0fdf4' : '#f5f3ff'}; border: 1px solid ${isBorrowed ? '#bbf7d0' : '#ddd6fe'}; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <i class="material-icons-round" style="font-size: 1.1rem;">${isBorrowed ? 'assignment_turned_in' : 'assignment_return'}</i>
+                      </button>
+                      <button class="icon-btn" onclick="viewLetter('${l.id}')" title="${t('view')}" style="color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <i class="material-icons-round" style="font-size: 1.1rem;">info</i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('') || `<tr><td colspan="7" style="padding: 4rem; text-align: center; color: #94a3b8;"><i class="material-icons-round" style="font-size: 3.5rem; margin-bottom: 1rem; color: #cbd5e1;">inventory_2</i><p style="font-size: 1.1rem; font-weight: 600;">${t('noArchivedRecords')}</p><p style="font-size: 0.85rem; margin-top: 4px;">Click 'Send to Archive' on any letter to assign physical box/cabinet and secure it here.</p></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function executeArchiveSearch() {
+  const cat = document.getElementById('archiveCategoryFilter')?.value || '';
+  const yr = document.getElementById('archiveYearFilter')?.value || '';
+  const sq = document.getElementById('archiveSearchInput')?.value || '';
+  showArchive(cat, yr, sq);
+}
+
+// Modal: Assign physical location & archive letter
+async function openArchiveModal(id) {
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  const existingOverlay = document.getElementById('archiveModalOverlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const prev = l.archiveData || {};
+  const currentYear = new Date().getFullYear();
+
+  const modalHtml = `
+    <div id="archiveModalOverlay" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 1rem;">
+      <div class="card animate-fade-in" style="width: 100%; max-width: 560px; margin: 0; padding: 2rem; border-top: 5px solid #0284c7; box-shadow: 0 25px 60px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.35rem; color: var(--navy); display: flex; align-items: center; gap: 8px;">
+              <i class="material-icons-round" style="color: #0284c7;">inventory_2</i>
+              ${t('sendToArchive')}
+            </h3>
+            <p style="font-size: 0.8rem; color: #64748b; margin: 3px 0 0;">Reference: <strong>${l.refNumber || l.id}</strong></p>
+          </div>
+          <i class="material-icons-round" style="cursor: pointer; font-size: 1.5rem;" onclick="document.getElementById('archiveModalOverlay').remove()">close</i>
+        </div>
+
+        <form id="archiveForm" onsubmit="handleArchiveSubmit(event, '${id}')">
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('category')}</label>
+            <select id="arc_category" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1;" required>
+              <option value="tax" ${prev.category === 'tax' ? 'selected' : ''}>Tax & Revenue Assessment (Canshuuraha)</option>
+              <option value="decrees" ${prev.category === 'decrees' ? 'selected' : ''}>Ministerial Decrees & Circulars (Awaamiirta Wasiirka)</option>
+              <option value="legal" ${prev.category === 'legal' ? 'selected' : ''}>Legal & Litigation Directives (Sharciyada)</option>
+              <option value="finance" ${prev.category === 'finance' ? 'selected' : ''}>Finance & Public Accounts (Maaliyadda)</option>
+              <option value="hr" ${prev.category === 'hr' ? 'selected' : ''}>HRM & Personnel Records (Shaqaalaha)</option>
+              <option value="general" ${prev.category === 'general' ? 'selected' : ''}>General Administrative Records (Maamulka Guud)</option>
+            </select>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 0.75rem; font-weight: 800; color: #0284c7; text-transform: uppercase; margin-bottom: 0.75rem;">
+              <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">room</i>
+              ${t('physicalLocation')} Indexing
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('cabinet')}</label>
+                <input type="text" id="arc_cabinet" value="${prev.cabinet || 'Cabinet-A'}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Cabinet-A" required>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('shelf')}</label>
+                <input type="text" id="arc_shelf" value="${prev.shelf || 'Shelf-2'}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Shelf-2" required>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">${t('boxTag')}</label>
+                <input type="text" id="arc_box" value="${prev.box || `BOX-${currentYear}-01`}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. BOX-2026-01" required>
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">Folder / File No.</label>
+                <input type="text" id="arc_folder" value="${prev.folder || 'Folder-01'}" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;" placeholder="e.g. Folder-01" required>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('archivistNotes')}</label>
+            <textarea id="arc_notes" rows="2" style="width: 100%; padding: 0.6rem; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.85rem;" placeholder="Special handling directives, permanent retention notes...">${prev.notes || ''}</textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+            <button type="button" class="btn" onclick="document.getElementById('archiveModalOverlay').remove()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="archiveSubmitBtn" style="background: #0284c7; color: white;">
+              <i class="material-icons-round">save</i> ${t('sendToArchive')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function handleArchiveSubmit(e, id) {
+  e.preventDefault();
+  const btn = document.getElementById('archiveSubmitBtn');
+  if (btn) { btn.disabled = true; btn.innerText = "Securing in Vault..."; }
+
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  const archiveData = {
+    category: document.getElementById('arc_category').value,
+    cabinet: document.getElementById('arc_cabinet').value,
+    shelf: document.getElementById('arc_shelf').value,
+    box: document.getElementById('arc_box').value,
+    folder: document.getElementById('arc_folder').value,
+    notes: document.getElementById('arc_notes').value,
+    archivedAt: Date.now(),
+    archivedDate: new Date().toISOString().split('T')[0],
+    archivedBy: currentDept || 'Archivist'
+  };
+
+  l.isArchived = true;
+  l.archiveData = archiveData;
+  if (!l.checkoutData) {
+    l.checkoutData = { isBorrowed: false };
+  }
+
+  // Record archival minute
+  l.minuteSheet = l.minuteSheet || [];
+  l.minuteSheet.push({
+    from: currentDept,
+    to: 'Archive Vault (Qaybta Kaydka)',
+    remarks: `[Permanently Archived] Stored in Cabinet: ${archiveData.cabinet}, Shelf: ${archiveData.shelf}, Box: ${archiveData.box}. Tag: ${archiveData.category.toUpperCase()}`,
+    date: archiveData.archivedDate,
+    timestamp: Date.now()
+  });
+
+  try {
+    await saveLetter(l);
+    alert("✅ " + t('archiveSuccess'));
+    const overlay = document.getElementById('archiveModalOverlay');
+    if (overlay) overlay.remove();
+    closeModal();
+    showArchive();
+  } catch(err) {
+    alert("Failed to archive: " + err.message);
+    if (btn) { btn.disabled = false; btn.innerText = "Retry Archive"; }
+  }
+}
+
+// Hardcopy Borrow / Check-out modal
+async function openBorrowModal(id) {
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  const existingOverlay = document.getElementById('borrowModalOverlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const isBorrowed = l.checkoutData?.isBorrowed;
+  const otherDepts = departments.filter(d => d !== currentDept);
+
+  const modalHtml = `
+    <div id="borrowModalOverlay" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 1rem;">
+      <div class="card animate-fade-in" style="width: 100%; max-width: 500px; margin: 0; padding: 2rem; border-top: 5px solid ${isBorrowed ? '#16a34a' : '#8b5cf6'};">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <h3 style="margin: 0; font-size: 1.3rem; color: var(--navy); display: flex; align-items: center; gap: 8px;">
+            <i class="material-icons-round" style="color: ${isBorrowed ? '#16a34a' : '#8b5cf6'};">${isBorrowed ? 'assignment_turned_in' : 'assignment_return'}</i>
+            ${isBorrowed ? t('returnHardcopy') : t('borrowHardcopy')}
+          </h3>
+          <i class="material-icons-round" style="cursor: pointer;" onclick="document.getElementById('borrowModalOverlay').remove()">close</i>
+        </div>
+
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem;">
+          Physical File: <strong>${l.refNumber || l.id}</strong><br>
+          Storage: <strong>${l.archiveData?.cabinet || 'Cab-A'} &bull; ${l.archiveData?.shelf || 'Shelf-1'} &bull; ${l.archiveData?.box || 'Box-01'}</strong>
+        </p>
+
+        ${isBorrowed ? `
+          <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <div style="font-weight: 800; color: #b91c1c; font-size: 0.9rem; margin-bottom: 0.35rem;">Currently Borrowed Out</div>
+            <div style="font-size: 0.85rem; color: #334155;">
+              <strong>Borrowing Dept:</strong> ${l.checkoutData.borrowedBy}<br>
+              <strong>Date Taken:</strong> ${new Date(l.checkoutData.borrowedAt).toLocaleDateString()}<br>
+              <strong>Return Due Date:</strong> ${l.checkoutData.expectedReturn || 'ASAP'}
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+            <button type="button" class="btn" onclick="document.getElementById('borrowModalOverlay').remove()">Cancel</button>
+            <button class="btn btn-primary" onclick="handleReturnHardcopy('${id}')" style="background: #16a34a; color: white;">
+              <i class="material-icons-round">check_circle</i> Confirm Returned to Safe
+            </button>
+          </div>
+        ` : `
+          <form onsubmit="handleBorrowSubmit(event, '${id}')">
+            <div style="margin-bottom: 1rem;">
+              <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('borrowedBy')}</label>
+              <select id="borrow_dept" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1;" required>
+                <option value="">${t('selectDept')}</option>
+                ${otherDepts.map(d => `<option value="${d}">${d}</option>`).join('')}
+              </select>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+              <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">${t('expectedReturnDate')}</label>
+              <input type="date" id="borrow_due_date" style="width: 100%; padding: 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1;" required>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+              <button type="button" class="btn" onclick="document.getElementById('borrowModalOverlay').remove()">Cancel</button>
+              <button type="submit" class="btn btn-primary" style="background: #8b5cf6; color: white;">
+                <i class="material-icons-round">assignment</i> Authorize Check-Out
+              </button>
+            </div>
+          </form>
+        `}
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function handleBorrowSubmit(e, id) {
+  e.preventDefault();
+  const dept = document.getElementById('borrow_dept').value;
+  const returnDate = document.getElementById('borrow_due_date').value;
+
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  l.checkoutData = {
+    isBorrowed: true,
+    borrowedBy: dept,
+    borrowedAt: Date.now(),
+    expectedReturn: returnDate
+  };
+
+  l.minuteSheet = l.minuteSheet || [];
+  l.minuteSheet.push({
+    from: currentDept,
+    to: dept,
+    remarks: `[Physical File Borrowed] Original hardcopy folder checked out by ${dept}. Expected return: ${returnDate}`,
+    date: new Date().toISOString().split('T')[0],
+    timestamp: Date.now()
+  });
+
+  await saveLetter(l);
+  alert(`📋 Physical file checked out to ${dept}!`);
+  const overlay = document.getElementById('borrowModalOverlay');
+  if (overlay) overlay.remove();
+  showArchive();
+}
+
+async function handleReturnHardcopy(id) {
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  const prevBorrower = l.checkoutData?.borrowedBy || 'Department';
+  l.checkoutData = {
+    isBorrowed: false,
+    returnedAt: Date.now()
+  };
+
+  l.minuteSheet = l.minuteSheet || [];
+  l.minuteSheet.push({
+    from: prevBorrower,
+    to: 'Archive Vault (Qaybta Kaydka)',
+    remarks: `[Physical File Returned] Original hardcopy folder returned to vault and safely indexed in Cabinet: ${l.archiveData?.cabinet || 'A'}, Box: ${l.archiveData?.box || 'Box-01'}`,
+    date: new Date().toISOString().split('T')[0],
+    timestamp: Date.now()
+  });
+
+  await saveLetter(l);
+  alert(`✅ Hardcopy file marked as returned and secured in vault!`);
+  const overlay = document.getElementById('borrowModalOverlay');
+  if (overlay) overlay.remove();
+  showArchive();
+}
+
+// Printable Physical Archive Box / Folder Tag
+async function printArchiveTag(id) {
+  const letters = await getLetters();
+  const l = letters.find(lt => lt.id === id);
+  if (!l) return;
+
+  const arc = l.archiveData || { box: 'BOX-UNTAGGED', cabinet: 'A', shelf: '1', folder: '01', category: 'general' };
+  const verifyUrl = `https://letter-management-f1f19.web.app/?verify=${encodeURIComponent(l.id)}`;
+  const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=3&data=${encodeURIComponent(verifyUrl)}`;
+
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Archive Storage Tag - ${arc.box}</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 25px; margin: 0; background: white; color: #0f172a; }
+        .tag-card { border: 3px solid #0f172a; border-radius: 12px; padding: 20px; max-width: 580px; margin: 0 auto; }
+        .box-title { font-size: 26px; font-weight: 900; color: #0284c7; letter-spacing: 0.05em; margin: 10px 0 5px; }
+        .loc-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 15px 0; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center; }
+        .loc-label { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; }
+        .loc-val { font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px; }
+        @media print { body { padding: 0; } .tag-card { border: 3px solid #000; } }
+      </style>
+    </head>
+    <body>
+      <div class="tag-card">
+        <table style="width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 10px;">
+          <tr>
+            <td style="width: 55px;">
+              <img src="logo.png" style="width: 50px; height: 50px; object-fit: contain;">
+            </td>
+            <td>
+              <div style="font-size: 10px; font-weight: 800; color: #475569;">DAWLAD DEEGAANKA SOOMAALIDA &bull; SRS REVENUE BUREAU</div>
+              <div style="font-size: 14px; font-weight: 900; color: #0f172a;">OFFICIAL ARCHIVAL PHYSICAL VAULT TAG</div>
+            </td>
+            <td style="text-align: right; width: 110px;">
+              <img src="${qrImgSrc}" style="width: 90px; height: 90px; border: 1px solid #cbd5e1; border-radius: 4px;">
+            </td>
+          </tr>
+        </table>
+
+        <div style="text-align: center; margin-top: 15px;">
+          <div style="font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase;">PHYSICAL BOX / CONTAINER BARCODE TAG</div>
+          <div class="box-title">📦 ${arc.box}</div>
+        </div>
+
+        <div class="loc-grid">
+          <div>
+            <div class="loc-label">CABINET / SAFE</div>
+            <div class="loc-val">${arc.cabinet}</div>
+          </div>
+          <div>
+            <div class="loc-label">SHELF LEVEL</div>
+            <div class="loc-val">${arc.shelf}</div>
+          </div>
+          <div>
+            <div class="loc-label">FOLDER NO.</div>
+            <div class="loc-val">${arc.folder}</div>
+          </div>
+        </div>
+
+        <div style="font-size: 12px; line-height: 1.6; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+          <div><strong>Official Ref:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${l.refNumber || l.id}</span></div>
+          <div><strong>Originating:</strong> ${l.sender} &rarr; <strong>Recipient:</strong> ${l.recipient}</div>
+          <div><strong>Subject:</strong> ${l.subject}</div>
+          <div><strong>Archived Date:</strong> ${arc.archivedDate} by ${arc.archivedBy}</div>
+        </div>
+
+        <div style="margin-top: 15px; text-align: center; background: #0f172a; color: white; padding: 6px; border-radius: 6px; font-size: 9px; font-weight: 800; letter-spacing: 0.05em;">
+          AFFIX LABEL DIRECTLY TO HARDCOPY CARDBOARD BOX OR FOLDER
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+  w.document.close();
+  setTimeout(() => { w.print(); }, 500);
+}
+
 // Hybrid Initialization
 async function initDB() {
   // Local DB Init
@@ -560,11 +1213,13 @@ let unsubscribeListener = null;
 
 // Helper: Refresh whatever view user is on
 function refreshCurrentView() {
-  if (typeof currentView === 'undefined') return;
+  if (typeof currentView === 'undefined' || !currentDept) return;
   if (currentView === 'dashboard') showDashboard();
   else if (currentView === 'incoming') showIncoming();
   else if (currentView === 'outgoing') showOutgoing();
   else if (currentView === 'reports') showReports();
+  else if (currentView === 'archive') showArchive();
+  else if (currentView === 'admin') showAdminPanel();
 }
 
 // Updated getLetters - Now relies on Local DB (which is fed by Listener)
@@ -988,6 +1643,14 @@ async function updateSidebarNotifications() {
     notifBadge.style.display = totalNotifs > 0 ? 'flex' : 'none';
     notifBadge.style.background = incomingSummons > 0 ? '#ef4444' : '#3b82f6';
   }
+
+  // Archive badge: count of all archived records in vault
+  const archivedCount = letters.filter(l => l.isArchived || l.status === 'archived').length;
+  const archBadge = document.getElementById('archiveBadge');
+  if (archBadge) {
+    archBadge.innerText = archivedCount;
+    archBadge.style.display = archivedCount > 0 ? 'inline-flex' : 'none';
+  }
 }
 
 async function showIncoming() {
@@ -1219,7 +1882,7 @@ async function showReports() {
 
 async function showAdminPanel() {
   currentView = 'admin';
-  updateActiveNavLink(4);
+  updateActiveNavLink(5);
   const mainBody = document.getElementById('mainBody');
   const passwords = await getPasswords();
   const settings = await getSettings();
@@ -1392,6 +2055,40 @@ async function viewLetter(id) {
 
           ${minuteSheetHtml}
 
+          ${l.isArchived ? `
+            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #0284c7; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px; color: #0369a1; font-weight: 800; font-size: 0.82rem; text-transform: uppercase;">
+                  <i class="material-icons-round" style="font-size: 1.2rem;">inventory_2</i>
+                  ${t('archive')} &bull; Physical Vault Storage
+                </div>
+                <div style="font-size: 1.15rem; font-weight: 800; color: var(--navy); margin-top: 4px;">
+                  ${l.archiveData?.box || 'BOX-GENERAL'} &bull; Folder: ${l.archiveData?.folder || '01'}
+                </div>
+                <div style="font-size: 0.85rem; color: #475569; margin-top: 2px;">
+                  Cabinet: <strong>${l.archiveData?.cabinet || 'A'}</strong> &bull; Shelf: <strong>${l.archiveData?.shelf || '1'}</strong> &bull; Category: <strong>${(l.archiveData?.category || 'general').toUpperCase()}</strong>
+                </div>
+                ${l.checkoutData?.isBorrowed ? `
+                  <div style="margin-top: 6px; color: #b91c1c; font-weight: 700; font-size: 0.82rem;">
+                    <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">assignment_ind</i> Hardcopy checked out by ${l.checkoutData.borrowedBy} (Due: ${l.checkoutData.expectedReturn || 'ASAP'})
+                  </div>
+                ` : `
+                  <div style="margin-top: 6px; color: #166534; font-weight: 700; font-size: 0.82rem;">
+                    <i class="material-icons-round" style="font-size: 0.95rem; vertical-align: middle;">verified</i> Secured in Physical Safe Vault
+                  </div>
+                `}
+              </div>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn" style="background: #ca8a04; color: white; padding: 0.5rem 0.85rem; font-size: 0.82rem;" onclick="printArchiveTag('${id}')">
+                  <i class="material-icons-round" style="font-size: 1rem;">qr_code_2</i> ${t('printArchiveTag')}
+                </button>
+                <button class="btn" style="background: ${l.checkoutData?.isBorrowed ? '#16a34a' : '#8b5cf6'}; color: white; padding: 0.5rem 0.85rem; font-size: 0.82rem;" onclick="openBorrowModal('${id}')">
+                  <i class="material-icons-round" style="font-size: 1rem;">${l.checkoutData?.isBorrowed ? 'assignment_turned_in' : 'assignment_return'}</i> ${l.checkoutData?.isBorrowed ? t('returnHardcopy') : t('borrowHardcopy')}
+                </button>
+              </div>
+            </div>
+          ` : ''}
+
           ${(l.fileBlob || l.fileUrl || (l.fileChunks && l.fileChunks > 0)) ? `
             <div style="background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%); border: 2px solid var(--accent); border-radius: 16px; padding: 1.75rem; text-align: center; margin-bottom: 2rem; position: relative;">
               <div style="position: absolute; top: 0; right: 0; padding: 0.4rem 0.85rem; background: var(--accent); color: white; font-size: 0.7rem; font-weight: 800; border-bottom-left-radius: 12px;">CLOUD ATTACHMENT READY</div>
@@ -1421,6 +2118,9 @@ async function viewLetter(id) {
               <span style="padding: 0.3rem 0.8rem; border-radius: 99px; font-size: 0.75rem; font-weight: 800; background: #e2e8f0; color: #1e293b;">${l.status.toUpperCase()}</span>
             </div>
             <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+              <button class="btn" style="background: #0284c7; color: white; font-weight: 600;" onclick="openArchiveModal('${id}')">
+                <i class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">inventory_2</i> ${l.isArchived ? 'Update Archive' : t('sendToArchive')}
+              </button>
               ${(isIncoming || isAdmin) ? `
                 <button class="btn" style="background: #0284c7; color: white; font-weight: 600;" onclick="openForwardModal('${id}')">
                   <i class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">shortcut</i> ${t('forward')}
@@ -2338,6 +3038,7 @@ function refreshCurrentView() {
   else if (currentView === 'incoming') showIncoming();
   else if (currentView === 'outgoing') showOutgoing();
   else if (currentView === 'reports') showReports();
+  else if (currentView === 'archive') showArchive();
   else if (currentView === 'admin') showAdminPanel();
 }
 
